@@ -60,7 +60,7 @@ reads, and canonical workflow controls remain in force.
 
 For a knowledge base with a trusted bootstrap route, copy the reviewed standalone
 `bootstrap.py` and the ready-to-use `release.json`. The included pin selects the
-reviewed 0.2.1 runtime; later documentation-only commits do not change it.
+reviewed 0.2.2 runtime; later documentation-only commits do not change it.
 Maintain its exact source and runtime binding when approving an upgrade:
 
 ```json
@@ -69,7 +69,7 @@ Maintain its exact source and runtime binding when approving an upgrade:
   "repository": "https://github.com/dcluomax/context-slice.git",
   "revision": "<full reviewed 40-character commit>",
   "fingerprint": "<64-character runtime fingerprint from onboard --check>",
-  "version": "0.2.1"
+  "version": "0.2.2"
 }
 ```
 
