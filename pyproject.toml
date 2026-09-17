@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "context-slice"
+version = "0.2.0"
+description = "Local, incremental, budgeted evidence retrieval for AI assistants"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []
+
+[project.scripts]
+context-slice = "context_slice.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["context_slice*"]
