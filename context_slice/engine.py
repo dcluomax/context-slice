@@ -12,6 +12,8 @@ import time
 from typing import Iterator
 import uuid
 
+from .locking import file_lock
+
 
 class ContextError(Exception):
     """A reported input, freshness, or state error; never an empty success."""
@@ -162,6 +164,11 @@ class Engine:
         self.state.mkdir(parents=True, exist_ok=True)
         if os.name != "nt":
             self.state.chmod(0o700)
+        # Serialize the journal-mode transition before opening competing handles.
+        with file_lock(self.state / "initialize.lock"):
+            self._initialize_database()
+
+    def _initialize_database(self) -> None:
         self.db = sqlite3.connect(self.state / "index.sqlite3", timeout=0)
         self.db.row_factory = sqlite3.Row
         try:
