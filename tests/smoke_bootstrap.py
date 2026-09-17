@@ -35,4 +35,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        sys.stderr.buffer.write(error.stderr or b"")
+        raise

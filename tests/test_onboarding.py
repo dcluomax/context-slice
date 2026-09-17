@@ -10,7 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from context_slice.onboarding import OnboardError, atomic_write, onboard
+from context_slice import __version__
+from context_slice.onboarding import OnboardError, atomic_write, desired_release, onboard
 from context_slice.runtime import RuntimeIntegrityError
 
 
@@ -121,12 +122,28 @@ class OnboardingTests(unittest.TestCase):
         updated = self.base / "updated-source"
         shutil.copytree(SOURCE / "context_slice", updated / "context_slice", ignore=shutil.ignore_patterns("__pycache__"))
         version = updated / "context_slice" / "__init__.py"
-        version.write_text(version.read_text().replace('0.2.0', '0.2.1'))
+        version.write_text(version.read_text().replace(__version__, '99.0.0'))
         second = onboard(updated, self.home)
         self.assertNotEqual(first["release"], second["release"])
         self.assertTrue((self.home / ".context-slice" / "releases" / first["release"]).exists())
         self.assertEqual(local_receipt.read_text(), '{"keep":true}')
-        self.assertEqual(json.loads(self.run_cli("doctor").stdout)["version"], "0.2.1")
+        self.assertEqual(json.loads(self.run_cli("doctor").stdout)["version"], "99.0.0")
+
+    def test_source_newlines_do_not_change_release_identity(self):
+        lf_source = self.base / "lf-source"
+        crlf_source = self.base / "crlf-source"
+        for source in (lf_source, crlf_source):
+            (source / "context_slice").mkdir(parents=True)
+        for source_file in (SOURCE / "context_slice").glob("*.py"):
+            data = source_file.read_bytes().replace(b"\r\n", b"\n")
+            (lf_source / "context_slice" / source_file.name).write_bytes(data)
+            (crlf_source / "context_slice" / source_file.name).write_bytes(data.replace(b"\n", b"\r\n"))
+        self.assertEqual(desired_release(lf_source), desired_release(crlf_source))
+        first = onboard(crlf_source, self.home)
+        second = onboard(lf_source, self.home)
+        self.assertEqual(first["release"], second["release"])
+        self.assertFalse(second["changed"])
+        self.assertNotIn(b"\r\n", Path(first["launcher"]).read_bytes())
 
     def test_activation_failure_rolls_back_only_owned_writes(self):
         original_write = atomic_write

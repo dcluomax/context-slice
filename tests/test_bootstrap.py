@@ -69,6 +69,16 @@ class BootstrapTests(unittest.TestCase):
         run.assert_not_called()
         self.assertFalse((self.home / ".context-slice").exists())
 
+    def test_git_lf_and_windows_crlf_match_the_same_pin(self):
+        source = self.base / "newline-source"
+        self.fake_fetch(source, self.pin)
+        for path in (source / "context_slice").glob("*.py"):
+            data = path.read_bytes().replace(b"\r\n", b"\n")
+            path.write_bytes(data.replace(b"\n", b"\r\n"))
+        verified = bootstrap.verify_source(source, self.pin)
+        self.assertTrue(verified)
+        self.assertTrue(all(b"\r\n" not in data for data in verified.values()))
+
     def test_arbitrary_repository_and_short_revision_are_rejected(self):
         path = self.base / "release.json"
         for field, value in (

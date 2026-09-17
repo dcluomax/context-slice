@@ -82,7 +82,8 @@ def desired_release(source: Path) -> tuple[dict, dict[str, bytes], bytes]:
         reject_link(path)
         if not re.fullmatch(r"[a-z_]+\.py", path.name):
             raise OnboardError("The source package contains an unsupported Python filename.")
-        files["context_slice/" + path.name] = path.read_bytes()
+        # Git checkouts and editors can use CRLF; releases use canonical LF bytes.
+        files["context_slice/" + path.name] = path.read_bytes().replace(b"\r\n", b"\n")
     for required in ("__init__.py", "__main__.py", "cli.py", "engine.py", "runtime.py"):
         if "context_slice/" + required not in files:
             raise OnboardError("The reviewed source package is incomplete.")
