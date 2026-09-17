@@ -13,10 +13,10 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-import time
 from typing import Iterator
 
 from . import __version__
+from .locking import file_lock
 from .runtime import RuntimeIntegrityError, canonical, reject_link, release_path, sha256
 
 
@@ -99,36 +99,8 @@ def desired_release(source: Path) -> tuple[dict, dict[str, bytes], bytes]:
 
 @contextmanager
 def install_lock(root: Path, timeout: float = 10) -> Iterator[None]:
-    lock_path = root / "install.lock"
-    if lock_path.exists():
-        reject_link(lock_path)
-    with lock_path.open("a+b") as stream:
-        if stream.seek(0, os.SEEK_END) == 0:
-            stream.write(b"\0")
-            stream.flush()
-        deadline = time.monotonic() + timeout
-        while True:
-            stream.seek(0)
-            try:
-                if os.name == "nt":
-                    import msvcrt
-                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except (BlockingIOError, PermissionError):
-                if time.monotonic() >= deadline:
-                    raise OnboardError("Another onboarding operation still owns the installation lock.")
-                time.sleep(0.05)
-        try:
-            yield
-        finally:
-            stream.seek(0)
-            if os.name == "nt":
-                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                fcntl.flock(stream, fcntl.LOCK_UN)
+    with file_lock(root / "install.lock", timeout):
+        yield
 
 
 def checked_directory(path: Path) -> None:

@@ -147,9 +147,10 @@ source snapshots, or a Git revision.
   the source. This tool is not an OS sandbox against hostile local processes.
 - Unsupported/corrupt indexes and source-access failures are errors, not empty
   success responses. The CLI returns exit code 2 and bounded JSON on stderr.
-- Concurrent first use serializes schema creation. WAL-mode `SQLITE_BUSY`
-  lock upgrades have a five-second bounded retry; I/O/corruption errors are
-  not retried or concealed.
+- Concurrent first use takes an OS file lock before opening competing database
+  handles, serializing journal-mode and schema initialization together.
+  WAL-mode `SQLITE_BUSY` lock upgrades from other clients have a five-second
+  bounded retry; I/O/corruption errors are not retried or concealed.
 
 Only generic source and synthetic examples belong in this repository. Moving
 tooling to GitHub does not authorize moving a knowledge corpus or its history.
