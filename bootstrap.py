@@ -110,7 +110,7 @@ def fetch_source(destination: Path, pin: dict) -> None:
 
 def verify_source(source: Path, pin: dict) -> dict[str, bytes]:
     files = {
-        "context_slice/" + path.name: regular_bytes(path)
+        "context_slice/" + path.name: regular_bytes(path).replace(b"\r\n", b"\n")
         for path in sorted((source / "context_slice").glob("*.py"))
     }
     if not files or any(not re.fullmatch(r"context_slice/[a-z_]+\.py", path) for path in files):

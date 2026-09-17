@@ -104,3 +104,7 @@ reported as success or repaired by deleting unrelated files.
 Neither onboarding nor bootstrap edits the source corpus, uploads its contents,
 enables synchronization, changes credentials, creates a daemon, or alters model
 providers. Runtime and search-cache data remain outside Git repositories.
+
+Runtime fingerprints use canonical LF source bytes, not a platform's checkout
+line endings. CRLF checkouts and LF checkouts produce the same immutable release.
+The launcher still checks the exact bytes of the installed canonical files.
