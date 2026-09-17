@@ -59,7 +59,9 @@ source. Existing authorization, material-claim verification, full-implementation
 reads, and canonical workflow controls remain in force.
 
 For a knowledge base with a trusted bootstrap route, copy the reviewed standalone
-`bootstrap.py` and maintain a local release pin:
+`bootstrap.py` and the ready-to-use `release.json`. The included pin selects the
+reviewed 0.2.0 runtime; later documentation-only commits do not change it.
+Maintain its exact source and runtime binding when approving an upgrade:
 
 ```json
 {
