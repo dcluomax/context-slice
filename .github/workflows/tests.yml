@@ -25,6 +25,7 @@ jobs:
       - run: python -m context_slice --help
       - run: python -m context_slice doctor
       - run: python tests/stress_initialization.py
+      - run: python benchmarks/quality.py --require-perfect
       - run: python tests/smoke_bootstrap.py
 
   publication-hygiene:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -81,6 +82,44 @@ class EngineTests(unittest.TestCase):
         result = self.engine.brief('quartz" OR * NOT (bad)')
         self.assertTrue(result["results"])
         self.assertEqual(self.engine.db.execute("SELECT count(*) FROM documents").fetchone()[0], 1)
+
+    def test_location_boilerplate_does_not_outrank_prose(self):
+        self.note("docs/artifacts.md", "# Session artifacts\n`C:\\Archive\\copilot\\session\\performance.json`\n")
+        self.note("notes/useful.md", "# Session efficiency\nCopilot improves performance with bounded reads.\n")
+        result = self.engine.brief("Copilot session performance")
+        self.assertEqual(result["match_mode"], "text_all_terms")
+        self.assertEqual(result["results"][0]["path"], "notes/useful.md")
+
+    def test_path_lookup_is_explicit_when_prose_does_not_match(self):
+        self.note("opaqueidentifier.md", "# Inventory\nThe retained value is blue.\n")
+        result = self.engine.brief("opaqueidentifier")
+        self.assertEqual(result["match_mode"], "path_lookup")
+        self.assertEqual(result["results"][0]["path"], "opaqueidentifier.md")
+
+    def test_legacy_index_migration_preserves_receipts_and_old_database(self):
+        self.note("guide.md", "# Guide\nquartz answer\n")
+        self.engine.refresh()
+        legacy_state = self.base / "legacy"
+        legacy_state.mkdir()
+        legacy_path = legacy_state / "index.sqlite3"
+        with closing(sqlite3.connect(legacy_path)) as connection, connection:
+            self.engine.db.backup(connection)
+            connection.execute("ALTER TABLE fragments RENAME TO newer_fragments")
+            connection.execute("""CREATE VIRTUAL TABLE fragments USING fts5(
+                path UNINDEXED,start UNINDEXED,end UNINDEXED,heading,content UNINDEXED,terms
+            )""")
+            connection.execute("""INSERT INTO fragments(path,start,end,heading,content,terms)
+                SELECT path,start,end,heading,content,terms FROM newer_fragments""")
+            connection.execute("DROP TABLE newer_fragments")
+            connection.execute("INSERT INTO receipts VALUES ('retained-session','retained-key')")
+            connection.execute("PRAGMA user_version=1")
+        with Engine(self.root, legacy_state) as upgraded:
+            self.assertEqual(upgraded.db.execute("PRAGMA user_version").fetchone()[0], 2)
+            self.assertEqual(upgraded.db.execute("SELECT fragment FROM receipts").fetchone()[0], "retained-key")
+            self.assertTrue(upgraded.brief("quartz")["results"])
+        with closing(sqlite3.connect(legacy_path)) as preserved:
+            self.assertEqual(preserved.execute("PRAGMA user_version").fetchone()[0], 1)
+            self.assertEqual(preserved.execute("SELECT fragment FROM receipts").fetchone()[0], "retained-key")
 
     def test_explicit_acknowledgement_and_context_reset(self):
         self.note("guide.md", "# Guide\nquartz answer\n")
