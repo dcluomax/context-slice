@@ -26,6 +26,7 @@ The installer writes only to the chosen user's home:
 | `~/.context-slice/releases/<fingerprint>` | Immutable, hash-verified runtime modules |
 | `~/.context-slice/current.json` | Atomic active-release and ownership receipt |
 | `~/.context-slice/run.py` | Stable launcher; does not depend on this checkout |
+| `~/.context-slice/sessions/<session-hash>.json` | Explicit runtime-use and instruction-acknowledgement receipt |
 | `~/.copilot/instructions/context-slice.instructions.md` | User-level routing loaded by new Copilot CLI sessions |
 
 The launcher path is stable on all operating systems. Quote it as one argument:
@@ -58,9 +59,25 @@ already-supported answers, or evidence that requires another authoritative
 source. Existing authorization, material-claim verification, full-implementation
 reads, and canonical workflow controls remain in force.
 
+At the first applicable lookup, `prepare` combines bounded retrieval with an
+actual runtime-use receipt:
+
+```powershell
+python "$HOME\.context-slice\run.py" prepare "quartz rotation" --root C:\Notes --session example-session --max-bytes 8192
+python "$HOME\.context-slice\run.py" session-status --session example-session
+```
+
+The second command is read-only. Installation, verified use, instruction
+acknowledgement and document-read acknowledgement are different claims.
+After reading the installed instruction file, pass its current SHA-256 through
+`prepare --ack-instructions <hash>` to explicitly acknowledge that revision.
+Neither command acknowledges retrieved excerpts or a knowledge base's revision.
+A runtime or instruction change invalidates the corresponding current-session
+activation. Receipts contain hashes and counters, not queries or document text.
+
 For a knowledge base with a trusted bootstrap route, copy the reviewed standalone
 `bootstrap.py` and the ready-to-use `release.json`. The included pin selects the
-reviewed 0.2.2 runtime; later documentation-only commits do not change it.
+reviewed 0.3.0 runtime; later documentation-only commits do not change it.
 Maintain its exact source and runtime binding when approving an upgrade:
 
 ```json
@@ -69,7 +86,7 @@ Maintain its exact source and runtime binding when approving an upgrade:
   "repository": "https://github.com/dcluomax/context-slice.git",
   "revision": "<full reviewed 40-character commit>",
   "fingerprint": "<64-character runtime fingerprint from onboard --check>",
-  "version": "0.2.2"
+  "version": "0.3.0"
 }
 ```
 
@@ -100,6 +117,11 @@ Installer operations use an OS file lock. Activation updates the active receipt
 last and rolls back only its own file writes on a normal failure. A power loss
 or conflicting external writer may require explicit reconciliation; it is never
 reported as success or repaired by deleting unrelated files.
+
+Version 0.3 uses a separate `index-v2.sqlite3`. An existing v1 index is copied and
+migrated with its deliveries and read receipts; the original remains available
+for rollback. Passage ranking separates prose from incidental local paths and
+reports whether a result used all-term text, broad text, or location lookup.
 
 Neither onboarding nor bootstrap edits the source corpus, uploads its contents,
 enables synchronization, changes credentials, creates a daemon, or alters model
