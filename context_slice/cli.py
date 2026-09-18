@@ -26,6 +26,17 @@ def parser() -> argparse.ArgumentParser:
     brief.add_argument("--limit", type=int, default=3)
     brief.add_argument("--max-bytes", type=int, default=8192)
     brief.add_argument("--session", default="", help="Reuse only explicitly acknowledged excerpts")
+    prepare = commands.add_parser("prepare", parents=[common], help="Bounded retrieval plus an explicit session-use receipt")
+    prepare.add_argument("query")
+    prepare.add_argument("--scope", default="")
+    prepare.add_argument("--limit", type=int, default=3)
+    prepare.add_argument("--max-bytes", type=int, default=8192)
+    prepare.add_argument("--session", required=True)
+    prepare.add_argument("--home", type=Path, default=Path.home())
+    prepare.add_argument("--ack-instructions", default="", help="Current instruction SHA-256, only after actually reading it")
+    session_status = commands.add_parser("session-status", help="Read-only installed-runtime and session-receipt status")
+    session_status.add_argument("--session", required=True)
+    session_status.add_argument("--home", type=Path, default=Path.home())
     read = commands.add_parser("read", parents=[common], help="Read an exact source range")
     read.add_argument("path")
     read.add_argument("--start", type=int, default=1)
@@ -55,6 +66,19 @@ def main(argv: list[str] | None = None) -> int:
                 raise ContextError(str(error)) from error
             sys.stdout.buffer.write(wire(report))
             return 0
+        if args.command == "session-status":
+            from .session import session_state
+
+            sys.stdout.buffer.write(wire(session_state(args.home, args.session)[0]))
+            return 0
+        if args.command == "prepare":
+            from .session import session_state
+
+            if not 2048 <= args.max_bytes <= 262144:
+                raise ContextError("Prepare requires a 2048-262144 byte budget.")
+            activation = session_state(args.home, args.session)[0]
+            if args.ack_instructions and args.ack_instructions.lower() != activation["instructions"]:
+                raise ContextError("Instruction acknowledgement does not match the current instruction hash.")
         with Engine(args.root, args.state_dir) as engine:
             match args.command:
                 case "index":
@@ -64,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
                         args.query, scope=args.scope, limit=args.limit,
                         max_bytes=args.max_bytes, session=args.session,
                     )
+                case "prepare":
+                    from .session import record_use
+
+                    reserve = len(wire(activation)) + 192
+                    result = engine.brief(
+                        args.query, scope=args.scope, limit=args.limit,
+                        max_bytes=args.max_bytes - reserve, session=args.session,
+                    )
+                    result["activation"] = record_use(args.home, args.session, args.ack_instructions)
+                    result = finish(result, args.max_bytes)
                 case "read":
                     result = engine.read(args.path, args.start, args.end, args.max_bytes, args.sha256)
                 case "outline":

@@ -76,6 +76,12 @@ replacement for your agent's authorization and canonical-policy workflow.
 
 ## Progressive retrieval
 
+Version 0.3 separates meaningful text from incidental machine paths. It tries all
+query terms in text before a clearly labeled broad fallback, and reports
+`path_lookup` when a filename/location is the useful match. Source excerpts
+remain byte-exact. The v2 index is created separately; a v1 cache is copied and
+migrated without modifying the original database or dropping read receipts.
+
 ```powershell
 # Search first. The full JSON output is bounded, not just each snippet.
 context-slice brief "quartz rotation" --root C:\Notes --limit 3 --max-bytes 8192
@@ -126,6 +132,28 @@ Do not share receipt IDs between agents as a substitute for transferring context
 These receipts do not acknowledge canonical policies, provider prompts, external
 source snapshots, or a Git revision.
 
+## Per-session activation and first lookup
+
+After onboarding, combine the first applicable lookup and a use receipt:
+
+```powershell
+python "$HOME\.context-slice\run.py" prepare "quartz rotation" --root C:\Notes --session task-123
+python "$HOME\.context-slice\run.py" session-status --session task-123
+```
+
+Use your actual current session ID. `prepare` verifies the installed runtime and
+instruction file, performs bounded retrieval, and records successful use. Its
+receipt contains hashes/counters, not queries, corpus paths, or document bodies.
+This is **not proof that the model loaded or read its instructions**.
+`instructions_acknowledged` remains false unless the caller explicitly supplies
+`--ack-instructions` with the current hash after actually reading them. Changed
+runtime/instruction hashes invalidate the current activation; other sessions
+never inherit the acknowledgement. `session-status` is read-only.
+
+The complete `prepare` response, including activation metadata, remains bounded.
+Its minimum budget is 2,048 bytes. This activation receipt does not acknowledge
+retrieval excerpts or canonical knowledge-policy revisions.
+
 ## Privacy, coverage, and freshness
 
 - Only `.md`, `.mdx`, `.rst`, and `.txt` are indexed. Hidden paths, common build
@@ -157,7 +185,8 @@ tooling to GitHub does not authorize moving a knowledge corpus or its history.
 
 ## Measured example
 
-Windows / Python 3.12, 2026-09-17; 1,500 synthetic Markdown documents, seven
+Original implementation measurement: Windows / Python 3.12, 2026-09-17;
+1,500 synthetic Markdown documents, seven
 queries, exact planted facts preserved in every returned packet:
 
 | Metric | Full scan + whole matching file | Context Slice |
@@ -189,7 +218,13 @@ same-API timestamps and checks file identities separately.
 ```powershell
 python -m unittest discover -s tests -v
 python .\benchmarks\measure.py --documents 1500 --repeat 7
+python .\benchmarks\quality.py --require-perfect
 ```
+
+The fixed four-case passage-quality fixture was frozen before the 0.3 search
+change. Correct top-result source plus planted fact improved from 2/4 to 4/4,
+including path-heavy noise, Chinese text, and filename discovery. This small
+synthetic result is not a universal precision or session-speed claim.
 
 GitHub Actions runs the dependency-free tests on Windows, macOS, and Linux. The
 fixed evaluator lives in `benchmarks/measure.py`; it generates disposable data

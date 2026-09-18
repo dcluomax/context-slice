@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from collections import Counter
 import hashlib
 import json
@@ -32,6 +33,13 @@ STOPWORDS = frozenset(
 )
 WORD = re.compile(r"[a-zA-Z0-9]+|[\u3400-\u9fff]+")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+LOCAL_LOCATION = re.compile(r"(?:[A-Za-z]:[\\/][^\s`<>]+|(?:~?/(?:Users|home|tmp|private)/)[^\s`<>]+)")
+
+
+def search_columns(relative: str, heading: str, content: str) -> tuple[str, str]:
+    locations = " ".join(LOCAL_LOCATION.findall(content))
+    prose = LOCAL_LOCATION.sub(" ", content)
+    return " ".join(terms(f"{heading} {prose}")), " ".join(terms(f"{relative} {locations}"))
 
 
 def wire(value: dict) -> bytes:
@@ -169,7 +177,23 @@ class Engine:
             self._initialize_database()
 
     def _initialize_database(self) -> None:
-        self.db = sqlite3.connect(self.state / "index.sqlite3", timeout=0)
+        database = self.state / "index-v2.sqlite3"
+        legacy = self.state / "index.sqlite3"
+        if not database.exists() and legacy.exists():
+            temporary = self.state / f"index-v2-{uuid.uuid4().hex}.tmp"
+            try:
+                with closing(sqlite3.connect(legacy.resolve().as_uri() + "?mode=ro", uri=True)) as old:
+                    if old.execute("PRAGMA user_version").fetchone()[0] != 1:
+                        raise ContextError("Unsupported legacy index schema; it was not replaced.")
+                    bound = old.execute("SELECT value FROM metadata WHERE key='root'").fetchone()
+                    if bound is None or os.path.normcase(bound[0]) != os.path.normcase(str(self.root)):
+                        raise ContextError("The legacy index belongs to a different source root.")
+                    with closing(sqlite3.connect(temporary)) as copied:
+                        old.backup(copied)
+                os.replace(temporary, database)
+            finally:
+                temporary.unlink(missing_ok=True)
+        self.db = sqlite3.connect(database, timeout=0)
         self.db.row_factory = sqlite3.Row
         try:
             enable_wal(self.db)
@@ -177,7 +201,7 @@ class Engine:
             with self.db:
                 self.db.execute("BEGIN IMMEDIATE")
                 version = self.db.execute("PRAGMA user_version").fetchone()[0]
-                if version not in (0, 1):
+                if version not in (0, 1, 2):
                     raise ContextError(f"Unsupported index schema {version}; existing state was not replaced.")
                 if version == 0:
                     if self.db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchone():
@@ -191,7 +215,7 @@ class Engine:
                         )""",
                         """CREATE VIRTUAL TABLE fragments USING fts5(
                             path UNINDEXED, start UNINDEXED, end UNINDEXED,
-                            heading, content UNINDEXED, terms
+                            heading, content UNINDEXED, terms, location
                         )""",
                         """CREATE TABLE receipts (
                             session TEXT NOT NULL, fragment TEXT NOT NULL,
@@ -205,10 +229,26 @@ class Engine:
                     for statement in schema:
                         self.db.execute(statement)
                     self.db.execute("INSERT INTO metadata VALUES ('root', ?)", (str(self.root),))
-                    self.db.execute("PRAGMA user_version=1")
+                    self.db.execute("PRAGMA user_version=2")
                 stored = self.db.execute("SELECT value FROM metadata WHERE key='root'").fetchone()
                 if stored is None or os.path.normcase(stored[0]) != os.path.normcase(str(self.root)):
                     raise ContextError("This index belongs to a different source root.")
+                if version == 1:
+                    self.db.execute("ALTER TABLE fragments RENAME TO fragments_legacy")
+                    self.db.execute("""CREATE VIRTUAL TABLE fragments USING fts5(
+                        path UNINDEXED, start UNINDEXED, end UNINDEXED,
+                        heading, content UNINDEXED, terms, location
+                    )""")
+                    self.db.executemany(
+                        "INSERT INTO fragments(path,start,end,heading,content,terms,location) VALUES (?,?,?,?,?,?,?)",
+                        (
+                            (row["path"], row["start"], row["end"], row["heading"], row["content"],
+                             *search_columns(row["path"], row["heading"], row["content"]))
+                            for row in self.db.execute("SELECT * FROM fragments_legacy")
+                        ),
+                    )
+                    self.db.execute("DROP TABLE fragments_legacy")
+                    self.db.execute("PRAGMA user_version=2")
         except (sqlite3.Error, ContextError):
             self.db.close()
             raise
@@ -347,10 +387,10 @@ class Engine:
                         self.db.execute("DELETE FROM fragments WHERE path=?", (relative,))
                     if state == "indexed":
                         self.db.executemany(
-                            "INSERT INTO fragments(path,start,end,heading,content,terms) VALUES (?,?,?,?,?,?)",
+                            "INSERT INTO fragments(path,start,end,heading,content,terms,location) VALUES (?,?,?,?,?,?,?)",
                             (
                                 (relative, first, last, heading, content,
-                                 " ".join(terms(f"{relative} {heading} {content}")))
+                                 *search_columns(relative, heading, content))
                                 for first, last, heading, content in chunk_lines(text)
                             ),
                         )
@@ -369,27 +409,41 @@ class Engine:
             "discovery": "supported text only; hidden/generated/link paths excluded",
         }
 
-    def candidates(self, query_terms: list[str], query: str, scope: str) -> list[dict]:
-        expression = " OR ".join('"' + word.replace('"', '""') + '"' for word in query_terms)
-        rows = self.db.execute(
+    def candidates(self, query_terms: list[str], query: str, scope: str) -> tuple[list[dict], str]:
+        quoted = ['"' + word.replace('"', '""') + '"' for word in query_terms]
+
+        def search(expression: str) -> list[sqlite3.Row]:
+            return self.db.execute(
             """SELECT f.*, d.sha256, d.declared_status, d.source_kind,
-                      bm25(fragments,0,0,0,3,0,1) AS rank
+                      bm25(fragments,0,0,0,3,0,1,0.1) AS rank
                FROM fragments f JOIN documents d ON d.path=f.path
                WHERE fragments MATCH ?
                  AND (?='' OR f.path=? OR substr(f.path,1,?)=?)
                ORDER BY rank LIMIT ?""",
             (expression, scope, scope, len(scope) + 1, scope + "/", MAX_CANDIDATES),
-        ).fetchall()
+            ).fetchall()
+
+        mode = "text_all_terms"
+        rows = search("{heading terms}:(" + " AND ".join(quoted) + ")")
+        if not rows:
+            mode = "text_broad"
+            rows = search("{heading terms}:(" + " OR ".join(quoted) + ")")
+        if not rows or re.search(r"[\\/]|(?:\.md|\.txt|\.rst|\.mdx)\b", query, re.IGNORECASE):
+            location_rows = search("location:(" + " AND ".join(quoted) + ")")
+            if location_rows:
+                mode = "path_lookup"
+                rows = location_rows
         required = set(query_terms)
         results = []
         for row in rows:
             candidate = dict(row)
             matched = required.intersection(row["terms"].split())
-            exact = query.casefold() in row["content"].casefold()
+            exact = query.casefold() in LOCAL_LOCATION.sub(" ", row["content"]).casefold()
+            title_matches = len(required.intersection(terms(row["heading"])))
             canonical = row["path"].endswith("README.md") or row["path"].startswith("docs/")
-            candidate["score"] = (len(matched), exact, canonical, -row["rank"])
+            candidate["score"] = (len(matched), exact, title_matches, canonical, -row["rank"])
             results.append(candidate)
-        return sorted(results, key=lambda row: row["score"], reverse=True)
+        return sorted(results, key=lambda row: row["score"], reverse=True), mode
 
     def excerpt(self, row: dict, query_terms: list[str], verified: dict[str, str]) -> dict:
         relative = row["path"]
@@ -401,7 +455,7 @@ class Engine:
         lines = row["content"].splitlines(keepends=True)
         center = max(
             range(len(lines)),
-            key=lambda index: len(set(terms(lines[index])).intersection(query_terms)),
+            key=lambda index: len(set(terms(LOCAL_LOCATION.sub(" ", lines[index]))).intersection(query_terms)),
             default=0,
         )
         first, last = max(0, center - 3), min(len(lines), center + 5)
@@ -436,11 +490,12 @@ class Engine:
             raise ContextError("The session identifier is too long.")
         scope = self.canonical_scope(scope)
         refreshed = self.refresh(scope)
-        candidates = self.candidates(query_terms, query, scope)
+        candidates, match_mode = self.candidates(query_terms, query, scope)
         payload = {
             "schema": 1,
             "query": query,
             "scope": scope,
+            "match_mode": match_mode,
             "results": [],
             "already_read": [],
             "needs_read": [],
