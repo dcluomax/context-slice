@@ -32,7 +32,7 @@ def reject_link(path: Path) -> None:
 
 
 def release_path(root: Path, pointer: dict) -> Path:
-    if pointer.get("schema") != 1:
+    if pointer.get("schema") not in (1, 2):
         raise RuntimeIntegrityError("Unsupported managed installation schema.")
     fingerprint = pointer.get("release", "")
     if not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
@@ -73,10 +73,12 @@ def main() -> int:
         if sha256(Path(__file__).read_bytes()) != pointer.get("launcher_sha256"):
             raise RuntimeIntegrityError("The managed launcher differs from its installation receipt.")
         release = release_path(root, pointer)
+        if (root / "controls").exists() and not (release / "context_slice" / "controls.py").is_file():
+            raise RuntimeIntegrityError("Enabled withdrawal controls require a control-aware release.")
         sys.path.insert(0, str(release))
         from context_slice.cli import main as cli_main
 
-        return cli_main()
+        return cli_main(home=root.parent)
     except (OSError, ValueError, TypeError, RuntimeIntegrityError) as error:
         sys.stderr.write(json.dumps({"error": type(error).__name__, "message": str(error)[:600]}) + "\n")
         return 2

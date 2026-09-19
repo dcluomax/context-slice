@@ -57,6 +57,10 @@ def instruction_text(root: Path) -> bytes:
         "Omit scope only when the topic is unknown. Prefer exact identifiers; "
         "read the returned evidence rather than every match. A fully supported "
         "direct answer needs no lookup or index refresh.\n\n"
+        "The managed launcher selects the active installed release on every call. "
+        "If activation reports `refresh_required`, read the current instruction "
+        "before acknowledging it; never acknowledge other sessions for them. "
+        "A local activation is not proof that another machine or old model context updated.\n\n"
         "Escalate with `outline PATH --root ROOT` and `read PATH --root ROOT "
         "--start N --end M`. Preserve source line/hash references, raw-evidence "
         "attribution and omission warnings. An empty or truncated result is "
@@ -70,6 +74,12 @@ def instruction_text(root: Path) -> bytes:
         "Use a new ID or `forget` after compaction/context loss. Never reuse "
         "another agent's acknowledgement. Use `index --verify` after "
         "timestamp-preserving restores or when complete freshness matters.\n\n"
+        "Optional durable withdrawals are checked by index, brief, prepare, read, "
+        "outline and acknowledgement. `forget` resets receipts, not withdrawals. "
+        "If controls are missing, invalid, or deny a source, do not bypass them "
+        "with a raw-file reader or a different client/home. Surface the refusal. "
+        "Controls match exact source bytes in an explicit local scope; they do not "
+        "erase historical contexts, recognize paraphrases, or govern other applications.\n\n"
         "The runtime and cache stay local. Never publish notes, cache databases, "
         "receipts or credentials. If the launcher reports an error, surface it; "
         "use the policy's bounded fallback rather than claiming tool success. "
@@ -93,7 +103,7 @@ def desired_release(source: Path) -> tuple[dict, dict[str, bytes], bytes]:
             raise OnboardError("The source package contains an unsupported Python filename.")
         # Git checkouts and editors can use CRLF; releases use canonical LF bytes.
         files["context_slice/" + path.name] = path.read_bytes().replace(b"\r\n", b"\n")
-    for required in ("__init__.py", "__main__.py", "cli.py", "engine.py", "runtime.py"):
+    for required in ("__init__.py", "__main__.py", "cli.py", "engine.py", "runtime.py", "controls.py"):
         if "context_slice/" + required not in files:
             raise OnboardError("The reviewed source package is incomplete.")
     version_match = re.search(rb'__version__\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', files["context_slice/__init__.py"])
@@ -149,7 +159,7 @@ def inspect_install(root: Path, instruction: Path) -> tuple[dict | None, dict[Pa
     old = {path: existing_bytes(path) for path in (root / "run.py", instruction, current_path)}
     pointer = json.loads(old[current_path]) if old[current_path] is not None else None
     if pointer is not None and (
-        not isinstance(pointer, dict) or pointer.get("schema") != 1
+        not isinstance(pointer, dict) or pointer.get("schema") not in (1, 2)
         or not all(key in pointer for key in ("release", "version", "launcher_sha256", "instruction_sha256"))
     ):
         raise OnboardError("Unsupported existing installation receipt; it was not reset.")
@@ -170,7 +180,7 @@ def onboard(source: Path, home: Path, *, check: bool = False) -> dict:
     fingerprint = sha256(canonical(manifest))
     instructions = instruction_text(root)
     wanted = {
-        "schema": 1, "release": fingerprint, "version": manifest["version"],
+        "schema": 2, "release": fingerprint, "version": manifest["version"],
         "launcher_sha256": sha256(launcher), "instruction_sha256": sha256(instructions),
     }
 

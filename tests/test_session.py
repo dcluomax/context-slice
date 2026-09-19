@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -67,3 +68,26 @@ class SessionTests(unittest.TestCase):
     def test_session_identity_cannot_escape_receipt_directory(self):
         with self.assertRaises(ContextError):
             record_use(self.home, "../other")
+
+    def test_existing_session_uses_the_new_release_without_inheriting_acknowledgement(self):
+        first = record_use(self.home, "existing")
+        record_use(self.home, "existing", first["instructions"])
+        updated = self.home.parent / "updated"
+        shutil.copytree(
+            SOURCE / "context_slice", updated / "context_slice",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        version = updated / "context_slice" / "__init__.py"
+        version.write_text('__version__ = "99.0.0"\n', encoding="utf-8")
+        onboard(updated, self.home)
+        result = subprocess.run(
+            [sys.executable, "-I", str(self.home / ".context-slice" / "run.py"),
+             "session-status", "--session", "existing"], capture_output=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        status = json.loads(result.stdout)
+        self.assertEqual(status["version"], "99.0.0")
+        self.assertNotEqual(status["runtime"], first["runtime"])
+        self.assertFalse(status["recorded"])
+        self.assertFalse(status["instructions_acknowledged"])
+        self.assertTrue(status["refresh_required"])

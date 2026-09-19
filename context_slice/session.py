@@ -49,6 +49,7 @@ def session_state(home: Path, session: str) -> tuple[dict, Path, bytes | None]:
             "instructions_acknowledged": current and previous["instructions_acknowledged"],
             "uses": previous["uses"] if current else 0,
             "recorded": current,
+            "refresh_required": not (current and previous["instructions_acknowledged"]),
         }
         return result, path, raw
     except (OnboardError, RuntimeIntegrityError, ValueError, TypeError) as error:
@@ -63,6 +64,7 @@ def record_use(home: Path, session: str, acknowledge: str = "") -> dict:
             if acknowledge.lower() != result["instructions"]:
                 raise ContextError("Instruction acknowledgement does not match the current instruction hash.")
             result["instructions_acknowledged"] = True
+        result["refresh_required"] = not result["instructions_acknowledged"]
         result.update(
             uses=result["uses"] + 1, recorded=True,
             last_used_at=datetime.now(timezone.utc).isoformat(),
