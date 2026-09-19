@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "repository": "https://github.com/dcluomax/context-slice.git",
-  "revision": "4cddb14ece36ea8f6029b712e307d7438075cb40",
-  "fingerprint": "4cd09c30cb444b77d23a37f2dcef8334f855e16afc0b0dd8ea174188bb5e64c3",
+  "revision": "86c1c22bd7b5bad227ba6ef7c5ef8e319c1f604f",
+  "fingerprint": "2d07aae3d2d1e33610b5a2f4ab24932c3302f909029960c59fa06655e07999f0",
   "version": "0.4.0"
 }
