@@ -27,6 +27,7 @@ The installer writes only to the chosen user's home:
 | `~/.context-slice/current.json` | Atomic active-release and ownership receipt |
 | `~/.context-slice/run.py` | Stable launcher; does not depend on this checkout |
 | `~/.context-slice/sessions/<session-hash>.json` | Explicit runtime-use and instruction-acknowledgement receipt |
+| `~/.context-slice/controls/ledger.sqlite3` | Optional durable local withdrawal authority; never a disposable cache |
 | `~/.copilot/instructions/context-slice.instructions.md` | User-level routing loaded by new Copilot CLI sessions |
 
 The launcher path is stable on all operating systems. Quote it as one argument:
@@ -53,6 +54,13 @@ Already-running sessions must reload their instructions or read updated
 canonical policy. No installer can retroactively replace an existing model
 context. Other agent clients can adopt `adapters/AGENTS.fragment.md`; their
 configuration is not implicitly changed.
+
+Every managed invocation selects the current installed release, so an existing
+session's next tool call uses the activated code without restarting that
+session. Activation receipts expose `refresh_required` until that session
+actually acknowledges the current instruction after reading it. Do not
+fabricate other sessions' acknowledgements or use a local receipt as fleet
+deployment evidence.
 
 Use Context Slice for applicable local text-document retrieval, not greetings,
 already-supported answers, or evidence that requires another authoritative
@@ -126,6 +134,14 @@ reports whether a result used all-term text, broad text, or location lookup.
 Neither onboarding nor bootstrap edits the source corpus, uploads its contents,
 enables synchronization, changes credentials, creates a daemon, or alters model
 providers. Runtime and search-cache data remain outside Git repositories.
+
+Version 0.4's [withdrawal controls](withdrawals.md) are explicitly opt-in;
+installation alone neither enables them nor withdraws a source. Preserve their
+durable directory across upgrades and cache rebuilds. Never roll back its state
+with a code rollback, or use an old standalone client to bypass it.
+Its schema-2 installation pointer makes previous schema-1-only managed
+launchers/installers reject an unsupported downgrade. The new installer accepts
+an intact schema-1 installation and preserves its receipts and control state.
 
 Runtime fingerprints use canonical LF source bytes, not a platform's checkout
 line endings. CRLF checkouts and LF checkouts produce the same immutable release.

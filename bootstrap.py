@@ -62,7 +62,7 @@ def installed_matches(home: Path, pin: dict) -> bool:
     if not current.exists():
         return False
     pointer = json.loads(regular_bytes(current))
-    if not isinstance(pointer, dict) or pointer.get("schema") != 1:
+    if not isinstance(pointer, dict) or pointer.get("schema") not in (1, 2):
         raise BootstrapError("Unsupported installation receipt; it was not reset.")
     if pointer.get("release") != pin["fingerprint"] or pointer.get("version") != pin["version"]:
         return False

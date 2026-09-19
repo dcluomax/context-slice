@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from context_slice import __version__
+from context_slice.controls import ControlStore
 from context_slice.onboarding import OnboardError, atomic_write, desired_release, onboard
 from context_slice.runtime import RuntimeIntegrityError
 
@@ -55,6 +56,27 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(before, set(self.home.rglob("*")))
         onboard(SOURCE, self.home)
         self.assertTrue(onboard(SOURCE, self.home, check=True)["up_to_date"])
+
+    def test_upgrade_accepts_the_previous_pointer_and_preserves_durable_controls(self):
+        onboard(SOURCE, self.home)
+        current = self.home / ".context-slice" / "current.json"
+        pointer = json.loads(current.read_bytes())
+        pointer["schema"] = 1
+        current.write_text(json.dumps(pointer), encoding="utf-8")
+        store = ControlStore(self.home)
+        store.enable()
+        before = store.path.read_bytes()
+        self.assertTrue(onboard(SOURCE, self.home)["changed"])
+        self.assertEqual(json.loads(current.read_bytes())["schema"], 2)
+        self.assertEqual(store.path.read_bytes(), before)
+
+    def test_missing_control_module_is_rejected_before_installation(self):
+        incomplete = self.base / "incomplete"
+        shutil.copytree(SOURCE / "context_slice", incomplete / "context_slice")
+        (incomplete / "context_slice" / "controls.py").unlink()
+        with self.assertRaisesRegex(OnboardError, "incomplete"):
+            onboard(incomplete, self.home)
+        self.assertFalse((self.home / ".context-slice").exists())
 
     def test_runtime_needs_neither_pip_nor_source_checkout(self):
         onboard(SOURCE, self.home)

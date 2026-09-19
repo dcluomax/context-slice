@@ -70,6 +70,7 @@ re-index changed documents, rather than reading every file body again. A narrow
 | Do not repeat unchanged context | Session receipts with explicit acknowledgement and source revalidation |
 | Keep cached context fresh | Per-request metadata refresh, selected-file hashing, optional full rehash |
 | Preserve omitted evidence | Counts, source pointers for budget omissions, and explicit range escalation |
+| Keep explicitly withdrawn source revisions out of new packets | Opt-in durable controls, checked independently of the disposable index |
 
 This is not a semantic code graph, an LLM proxy, a prompt compressor, or a
 replacement for your agent's authorization and canonical-policy workflow.
@@ -149,10 +150,41 @@ This is **not proof that the model loaded or read its instructions**.
 `--ack-instructions` with the current hash after actually reading them. Changed
 runtime/instruction hashes invalidate the current activation; other sessions
 never inherit the acknowledgement. `session-status` is read-only.
+The launcher selects the active installed release on every invocation, including
+calls from an existing session. `refresh_required` explicitly identifies a
+missing current instruction acknowledgement; installation never fabricates one.
 
 The complete `prepare` response, including activation metadata, remains bounded.
 Its minimum budget is 2,048 bytes. This activation receipt does not acknowledge
 retrieval excerpts or canonical knowledge-policy revisions.
+
+## Optional durable withdrawals
+
+Version 0.4 adds **single-account, local, exact-byte withdrawal controls**.
+Enabling the feature does not withdraw anything or change source files:
+
+```powershell
+python "$HOME\.context-slice\run.py" control-enable --root C:\Notes
+python "$HOME\.context-slice\run.py" control-status --root C:\Notes
+```
+
+An explicitly requested `withdraw` binds the selected file's SHA-256, an explicit
+file/directory scope, a unique request ID, and the current control revision.
+`reinstate` references one withdrawal rather than clearing unrelated refusals.
+See [the commands, guarantee, and recovery contract](docs/withdrawals.md).
+
+The ledger lives at `~/.context-slice/controls/ledger.sqlite3`, **not in the
+retrieval cache**. Index rebuilding, source restoration, and receipt resets do
+not remove its rules. Index, brief, prepare, read, outline, acknowledgement, and
+the metadata-only `control-check` consult the same implementation. Missing or
+invalid required controls fail explicitly, rather than falling back to an empty
+allow list. Cache and control directories must be disjoint.
+
+This is not semantic forgetting, an ACL service, a claim-admission database, or
+interception of other applications. It does not erase existing model contexts,
+recognize paraphrases, govern a different OS account, or prevent whole-state
+rollback. Source files and historical evidence remain intact. Never bypass a
+control refusal with another home, an old standalone client, or a raw-file read.
 
 ## Privacy, coverage, and freshness
 
