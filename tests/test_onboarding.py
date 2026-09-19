@@ -78,6 +78,40 @@ class OnboardingTests(unittest.TestCase):
             onboard(incomplete, self.home)
         self.assertFalse((self.home / ".context-slice").exists())
 
+    def test_home_ancestor_alias_binds_the_same_controls(self):
+        onboard(SOURCE, self.home)
+        store = ControlStore(self.home.resolve())
+        store.enable()
+        alias = self.base / "home-alias"
+        try:
+            alias.symlink_to(self.home.resolve(), target_is_directory=True)
+        except OSError as error:
+            self.skipTest(f"Directory links unavailable: {error}")
+        result = subprocess.run(
+            [sys.executable, "-I", str(alias / ".context-slice" / "run.py"),
+             "control-status", "--root", str(self.home)],
+            capture_output=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads(result.stdout)["enabled"])
+
+    def test_managed_directory_link_is_not_hidden_by_ancestor_resolution(self):
+        onboard(SOURCE, self.home)
+        other = self.base / "linked-install"
+        other.mkdir()
+        try:
+            (other / ".context-slice").symlink_to(
+                (self.home / ".context-slice").resolve(), target_is_directory=True,
+            )
+        except OSError as error:
+            self.skipTest(f"Directory links unavailable: {error}")
+        result = subprocess.run(
+            [sys.executable, "-I", str(other / ".context-slice" / "run.py"), "doctor"],
+            capture_output=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("symbolic links", json.loads(result.stderr)["message"])
+
     def test_runtime_needs_neither_pip_nor_source_checkout(self):
         onboard(SOURCE, self.home)
         result = self.run_cli("doctor")
