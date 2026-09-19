@@ -68,6 +68,9 @@ def release_path(root: Path, pointer: dict) -> Path:
 def main() -> int:
     try:
         root = Path(__file__).absolute().parent
+        reject_link(Path(__file__).absolute())
+        reject_link(root)
+        root = root.resolve()
         reject_link(root / "current.json")
         pointer = json.loads((root / "current.json").read_bytes())
         if sha256(Path(__file__).read_bytes()) != pointer.get("launcher_sha256"):
