@@ -63,7 +63,7 @@ class OnboardingTests(unittest.TestCase):
         pointer = json.loads(current.read_bytes())
         pointer["schema"] = 1
         current.write_text(json.dumps(pointer), encoding="utf-8")
-        store = ControlStore(self.home)
+        store = ControlStore(self.home.resolve())
         store.enable()
         before = store.path.read_bytes()
         self.assertTrue(onboard(SOURCE, self.home)["changed"])
