@@ -15,11 +15,16 @@ def git(*args: str) -> bytes:
 
 def main() -> int:
     findings = []
-    commits = git("log", "--all", "--format=%H%x00%ae%x00%ce").decode().splitlines()
+    commits = git("log", "--all", "--format=%H%x00%ae%x00%cn%x00%ce").decode().splitlines()
     for record in commits:
-        revision, author, committer = record.split("\0")
+        revision, author, committer_name, committer = record.split("\0")
         for field, email in (("author", author), ("committer", committer)):
-            if not email.casefold().endswith("@users.noreply.github.com"):
+            github_committer = (
+                field == "committer"
+                and committer_name == "GitHub"
+                and email == "noreply@github.com"
+            )
+            if not email.casefold().endswith("@users.noreply.github.com") and not github_committer:
                 findings.append({"kind": "non_private_git_email", "commit": revision, "field": field})
     patterns = {
         "credential_pattern": re.compile(

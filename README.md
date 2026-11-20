@@ -268,8 +268,9 @@ never overwrites an unowned instruction file.
 ## Publication boundary
 
 This repository contains generic code and synthetic examples only. Git author
-and committer identities use GitHub no-reply addresses. Local deployment
-receipts, private paths, source corpora, caches, and credentials do not belong in
+and committer identities use GitHub no-reply addresses. The audit also accepts
+`GitHub <noreply@github.com>` only as a platform committer, not as an author.
+Local deployment receipts, private paths, source corpora, caches, and credentials do not belong in
 Git history. Before publication, run:
 
 ```powershell
